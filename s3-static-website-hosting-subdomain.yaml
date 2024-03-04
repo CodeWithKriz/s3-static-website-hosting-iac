@@ -1,0 +1,315 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Cloudformation template to manage aws services required for aws s3 static website hosting. During execution, manually copy Route 53 NS to Domain Registrar (if domain registered externally) if stack creates Route 53.'
+################################################################################
+# ## Description:
+# Cloudformation template to manage aws services required for aws s3 static website hosting.
+# During execution, manually copy Route 53 NS to Domain Registrar (if domain registered externally) if stack creates Route 53.
+
+# ## Instruction:
+# 1. This stack can be used to register domains in the following ways
+#   * www domain only, creates domain without naked domain redirection
+#   * www & naked (If "RedirectNakedDomain" set to "Yes") domain together, redirects naked domain to www domain
+#   * other subdomains individually (like "dev" or "test") w/o naked domain redirection
+# ACM certificate can be requested in two ways
+#   * If new certificate is required, pass the template URL "CreateAcmTemplateUrl" Outputs "Arn"
+#   * If certificate already exists, pass the "AcmArn"
+# 3. If any of these services are already created just provide their Id or ARN
+#   * AcmArn
+#   * Route53HostedZoneId
+#   * CloudfrontOACId
+
+# ## Usage:
+# ### www domain registration only
+# * AcmArn - <ACM_ARN> (or) "" (create new one)
+# * CloudfrontOACId - <Cloudfront_OAC_Id> (or) "" (create new one)
+# * CreateAcmTemplateUrl - https://${s3-bucket}.s3.amazonaws.com/path/to/create-acm-stack.yaml (if "AcmArn" empty)
+# * DomainName - example.com
+# * RedirectNakedDomain - No
+# * Route53HostedZoneId - <Route53_Hosted_Zone_Id> (or) "" (create new one)
+# * SubDomain - www
+
+# ### Outcome
+# 1. Creates www s3 bucket
+# 2. If "Route53HostedZoneId" is empty, creates new Hosted Zone
+# 3. If "AcmArn" is empty, requests new ACM using "CreateAcmTemplateUrl"
+# 4. If "CloudfrontOACId" is empty, creates new Origin Access Control
+# 5. Creates www Cloudfront distribution
+# 6. Adds www Cloudfront Recordset to Route 53 Hosted Zone
+# 7. Adds S3 bucket policy to allow request only from Cloudfront distribution
+
+# ### www domain registration & naked domain redirection
+# * AcmArn - <ACM_ARN> (or) "" (create new one)
+# * CloudfrontOACId - <Cloudfront_OAC_Id> (or) "" (create new one)
+# * CreateAcmTemplateUrl - https://${s3-bucket}.s3.amazonaws.com/path/to/create-acm-stack.yaml (if "AcmArn" empty)
+# * DomainName - example.com
+# * RedirectNakedDomain - Yes
+# * Route53HostedZoneId - <Route53_Hosted_Zone_Id> (or) "" (create new one)
+# * SubDomain - www
+
+# ### Outcome
+# 1. Creates www s3 bucket
+# 2. Creates naked s3 bucket and redirects to www domain
+# 3. If "Route53HostedZoneId" is empty, creates new Hosted Zone
+# 4. If "AcmArn" is empty, requests new ACM using "CreateAcmTemplateUrl"
+# 5. If "CloudfrontOACId" is empty, creates new Origin Access Control
+# 6. Creates www Cloudfront distribution
+# 7. Creates naked Cloudfront distribution
+# 8. Adds www Cloudfront Recordset to Route 53 Hosted Zone
+# 9. Adds naked Cloudfront Recordset to Route 53 Hosted Zone
+# 10. Adds S3 bucket policy to allow request only from Cloudfront distribution
+
+# ### sub domain registration
+# * AcmArn - <ACM_ARN> (or) "" (create new one)
+# * CloudfrontOACId - <Cloudfront_OAC_Id> (or) "" (create new one)
+# * CreateAcmTemplateUrl - https://${s3-bucket}.s3.amazonaws.com/path/to/create-acm-stack.yaml (if "AcmArn" empty)
+# * DomainName - example.com
+# * RedirectNakedDomain - No
+# * Route53HostedZoneId - <Route53_Hosted_Zone_Id> (or) "" (create new one)
+# * SubDomain - dev
+
+# ### Outcome
+# 1. Creates subdomain s3 bucket
+# 2. Creates subdomain Cloudfront distribution
+# 3. Adds subdomain Cloudfront Recordset to Route 53 Hosted Zone
+# 4. Adds S3 bucket policy to allow request only from Cloudfront distribution
+
+# ## Outputs:
+# * AcmArn
+# * SubDomainS3Bucket
+# * NakedDomainS3Bucket
+# * Route53HostedZoneId
+# * CloudfrontOACId
+# * SubDomainCloudfrontDistribution
+# * NakedDomainCloudfrontDistribution
+
+# ## Notes:
+# 1. During execution, manually copy Route 53 Nameservers to Domain Registrar (if domain registered externally) if stack creates Route 53
+# 2. Add appropriate "Tags" while executing the stack. These tags will be automatically tagged to the services. Like
+#   * Environment - <Environment>
+#   * awsApplication - <My_Application_Arn>
+
+################################################################################
+
+Parameters: 
+  DomainName:
+    Type: String
+    Description: 'Enter Domain Name. Example - "google.com".'
+  RedirectNakedDomain:
+    Type: String
+    AllowedValues: 
+      - 'Yes'
+      - 'No'
+    Default: 'No'
+    Description: 'Do you want to create and redirect naked domain to the given sub domain?'
+  SubDomain:
+    Type: String
+    Default: 'www'
+    Description: 'Enter SubDomain. Default - "www".'
+  AcmArn:
+    Type: String
+    Default: ""
+    Description: 'Enter ARN of ACM generated SSL certificate. Default - "".'
+  CreateAcmTemplateUrl:
+    Type: String
+    Default: ""
+    Description: 'Enter Cloudformation template S3 url for creating ACM certificate (if ACM ARN not given).'
+  Route53HostedZoneId:
+    Type: String
+    Default: ""
+    Description: 'Enter Route 53 Hosted Zone Id. Default - "".'
+  CloudfrontOACId:
+    Type: String
+    Default: ""
+    Description: 'Enter Cloudfront Origin Access Control Id. Default - "".'
+
+Conditions:
+  IsRedirectNakedDomainTrue: !Equals [!Ref RedirectNakedDomain, 'Yes']
+  IsAcmArnEmpty: !Equals [!Ref AcmArn, ""]
+  IsRoute53HostedZoneIdEmpty: !Equals [!Ref Route53HostedZoneId, ""]
+  IsCloudfrontOACIdEmpty: !Equals [!Ref CloudfrontOACId, ""]
+
+Resources: 
+  # S3 Bucket to host static website contents in www SubDomain
+  SubDomainS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: Private
+      BucketName: !Sub '${SubDomain}.${DomainName}'
+
+  # S3 Bucket to route naked domain to www SubDomain
+  NakedDomainS3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: IsRedirectNakedDomainTrue
+    Properties: 
+      AccessControl: Private
+      BucketName: !Sub '${DomainName}'
+      WebsiteConfiguration: 
+        RedirectAllRequestsTo:
+          HostName: !Sub '${SubDomain}.${DomainName}'
+          Protocol: http
+
+  # Route 53 Hosted Zone to route domain and SubDomain to Cloudfront distributions
+  Route53HostedZone:
+    Type: AWS::Route53::HostedZone
+    Condition: IsRoute53HostedZoneIdEmpty
+    Properties:
+      Name: !Sub '${DomainName}'
+      HostedZoneConfig:
+        Comment: !Sub 'Route 53 hosted zone for customer "${DomainName}".'
+
+  # ACM to request SSL certificate
+  AcmCertificate:
+    Type: AWS::CloudFormation::Stack
+    Condition: IsAcmArnEmpty
+    DependsOn: 
+      - Route53HostedZone
+    Properties:
+      TemplateURL: !Ref CreateAcmTemplateUrl
+      Parameters: 
+        DomainName: !Sub '${DomainName}'
+        ValidationMethod: DNS
+        HostedZoneId: !If [IsRoute53HostedZoneIdEmpty, !GetAtt Route53HostedZone.Id, !Ref Route53HostedZoneId]
+
+  # Origin Access Control to restrict S3 access only to Cloudfront
+  CloudfrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Condition: IsCloudfrontOACIdEmpty
+    Properties:
+      OriginAccessControlConfig: 
+        Description: !Sub 'Origin Access Control to customer "${DomainName}"'
+        Name: String
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Cloudfront distribution to route www SubDomain http protocol to https protocol
+  SubDomainCloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: 
+      - SubDomainS3Bucket
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt SubDomainS3Bucket.DomainName
+            OriginAccessControlId: !If [IsCloudfrontOACIdEmpty, !GetAtt CloudfrontOAC.Id, !Ref CloudfrontOACId]
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        Enabled: true
+        Aliases: 
+          - !Sub '${SubDomain}.${DomainName}'
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ViewerProtocolPolicy: redirect-to-https
+        ViewerCertificate:
+          AcmCertificateArn: !If [IsAcmArnEmpty, !GetAtt AcmCertificate.Outputs.Arn, !Ref AcmArn]
+          SslSupportMethod: sni-only
+        PriceClass: PriceClass_200
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponsePagePath: /error.html
+            ResponseCode: 200
+          - ErrorCode: 404
+            ResponsePagePath: /error.html
+            ResponseCode: 200
+
+  # Cloudfront distribution to route naked domain http protocol to https protocol
+  NakedDomainCloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: IsRedirectNakedDomainTrue
+    DependsOn: 
+      - NakedDomainS3Bucket
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: WebsiteEndpointOrigin
+            DomainName: !Sub '${DomainName}.s3-website.${AWS::Region}.amazonaws.com'
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        Aliases: 
+          - !Sub '${DomainName}'
+        DefaultCacheBehavior:
+          TargetOriginId: WebsiteEndpointOrigin
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ViewerProtocolPolicy: redirect-to-https
+        ViewerCertificate:
+          AcmCertificateArn: !If [IsAcmArnEmpty, !GetAtt AcmCertificate.Outputs.Arn, !Ref AcmArn]
+          SslSupportMethod: sni-only
+        PriceClass: PriceClass_200
+
+  # Alias Recordset from Cloudfront for www SubDomain
+  SubDomainAliasRecordset:
+    Type: AWS::Route53::RecordSet
+    DependsOn: 
+      - SubDomainCloudfrontDistribution
+    Properties:
+      Name: !Sub '${SubDomain}.${DomainName}'
+      HostedZoneId: !If [IsRoute53HostedZoneIdEmpty, !GetAtt Route53HostedZone.Id, !Ref Route53HostedZoneId]
+      Type: A
+      AliasTarget: 
+        DNSName: !GetAtt SubDomainCloudfrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  # Alias Recordset from Cloudfront for naked SubDomain
+  NakedDomainAliasRecordset:
+    Type: AWS::Route53::RecordSet
+    Condition: IsRedirectNakedDomainTrue
+    DependsOn: 
+      - NakedDomainCloudfrontDistribution
+    Properties:
+      Name: !Sub '${DomainName}'
+      HostedZoneId: !If [IsRoute53HostedZoneIdEmpty, !GetAtt Route53HostedZone.Id, !Ref Route53HostedZoneId]
+      Type: A
+      AliasTarget: 
+        DNSName: !GetAtt NakedDomainCloudfrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  # Attach S3 Bucket Policy to allow access only to Cloudfront distribution
+  SubDomainS3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn: 
+      - SubDomainS3Bucket
+      - SubDomainCloudfrontDistribution
+    Properties:
+      Bucket: !Ref SubDomainS3Bucket
+      PolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: 
+              Service: cloudfront.amazonaws.com
+            Action:
+              - 's3:GetObject'
+            Resource:
+              - !Sub 'arn:aws:s3:::${SubDomainS3Bucket}/*'
+            Condition:
+              StringEquals:
+                'aws:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${SubDomainCloudfrontDistribution.Id}'
+
+Outputs:
+  AcmArn:
+    Description: Arn of ACM generated SSL Certificate.
+    Value: !If [IsAcmArnEmpty, !GetAtt AcmCertificate.Outputs.Arn, !Ref AcmArn]
+  SubDomainS3Bucket:
+    Description: SubDomain S3 Bucket name
+    Value: !GetAtt SubDomainS3Bucket.DomainName
+  NakedDomainS3Bucket:
+    Description: Naked domain S3 Bucket name
+    Value: !If [IsRedirectNakedDomainTrue, !GetAtt NakedDomainS3Bucket.DomainName, ""]
+  Route53HostedZoneId:
+    Description: Route 53 Hosted Zone Id
+    Value: !If [IsRoute53HostedZoneIdEmpty, !GetAtt Route53HostedZone.Id, !Ref Route53HostedZoneId]
+  CloudfrontOACId:
+    Description: Cloudfront Origin Access Control Id
+    Value: !If [IsCloudfrontOACIdEmpty, !GetAtt CloudfrontOAC.Id, !Ref CloudfrontOACId]
+  SubDomainCloudfrontDistribution:
+    Description: SubDomain Cloudfront Distribution Domain Name
+    Value: !GetAtt SubDomainCloudfrontDistribution.DomainName
+  NakedDomainCloudfrontDistribution:
+    Description: Naked Domain Cloudfront Distribution Domain Name
+    Value: !If [IsRedirectNakedDomainTrue, !GetAtt NakedDomainCloudfrontDistribution.DomainName, ""]

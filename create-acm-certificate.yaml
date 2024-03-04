@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Create ACM Certificate and output its ARN.'
+################################################################################
+# ## Description:
+# Create ACM Certificate and output its ARN.
+
+# ## Instruction:
+# 1. This stack can be used to request ACM SSL certificate in the two ways
+#   * ACM w/ DNS validation - provide Route 53 "HostedZoneId"
+#   * ACM w/ EMAIL validation - provide Email Domain Name (must be same as Domain Name in most cases)
+
+# ## Usage:
+# ### ACM w/ DNS validation
+# * DomainName - example.com
+# * ValidationMethod - DNS
+# * HostedZoneId - <Route53_Hosted_Zone_Id>
+
+# ### Outcome
+# 1. Requests new ACM using DNS validation
+
+# ### ACM w/ EMAIL validation
+# * DomainName - example.com
+# * ValidationMethod - EMAIL
+# * ValidationDomain - example.com
+
+# ### Outcome
+# 1. Requests new ACM using EMAIL validation
+
+# ## Outputs:
+# 1. Outputs.Arn
+################################################################################
+
+Parameters: 
+  DomainName:
+    Type: String
+    Description: 'Enter Domain Name. Example - "example.com". This create CNAME for "*.example.com" & "example.com".'
+  ValidationMethod:
+    Type: String
+    AllowedValues: 
+      - 'DNS'
+      - 'EMAIL'
+    Default: 'DNS'
+    Description: 'Certificate Validation Method. Default - "DNS".'
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: 'If validtion method is "DNS" then enter Route 53 Hosted Zone Id for validation. Default - "".'
+  ValidationDomain:
+    Type: String
+    Default: ''
+    Description: 'If validtion method is "EMAIL" then enter Domain Name for validation. Must be same as Domain Name in most cases. Default - "".'
+
+Conditions:
+  IsDNSValidation: !Equals [!Ref ValidationMethod, 'DNS']
+  IsNotDNSValidation: !Not [!Equals [!Ref ValidationMethod, 'DNS']]
+
+Resources: 
+  # ACM to request SSL certificate using DNS Validation
+  ACMCertificateDNS:
+    Type: AWS::CertificateManager::Certificate
+    Condition: IsDNSValidation
+    Properties:
+      DomainName: !Sub '*.${DomainName}'
+      SubjectAlternativeNames:
+        - !Sub '${DomainName}'
+      ValidationMethod: !Ref ValidationMethod
+      DomainValidationOptions:
+        - DomainName: !Sub '${DomainName}'
+          HostedZoneId: !Ref HostedZoneId
+
+  # ACM to request SSL certificate using EMAIL Validation
+  ACMCertificateEMAIL:
+    Type: AWS::CertificateManager::Certificate
+    Condition: IsNotDNSValidation
+    Properties:
+      DomainName: !Sub '*.${DomainName}'
+      SubjectAlternativeNames:
+        - !Sub '${DomainName}'
+      ValidationMethod: !Ref ValidationMethod
+      DomainValidationOptions:
+        - DomainName: !Sub '${DomainName}'
+          ValidationDomain: !Ref ValidationDomain
+
+Outputs:
+  Arn:
+    Description: Arn of ACM generated SSL Certificate.
+    Value: !If [IsDNSValidation, !Ref ACMCertificateDNS, !Ref ACMCertificateEMAIL]
