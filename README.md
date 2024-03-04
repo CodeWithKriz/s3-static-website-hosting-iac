@@ -1,6 +1,8 @@
 # S3 Static Website Hosting - IAC
 Infrastructure as Code using AWS Cloudformation template to manage AWS S3 static website hosting with ACM, Route53, Record Sets, Cloudfront, CloudfrontOAC, and naked &amp; subdomain S3 buckets
 
+![s3-static-website-hosting-subdomain](https://github.com/CodeWithKriz/s3-static-website-hosting-iac/assets/66562899/7fa71124-b0c4-4a76-9b7c-43f7a2c70c9f)
+
 ---
 
 # create-acm-certificate.yaml
