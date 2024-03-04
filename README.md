@@ -2,6 +2,38 @@
 Infrastructure as Code using AWS Cloudformation template to manage AWS S3 static website hosting with ACM, Route53, Record Sets, Cloudfront, CloudfrontOAC, and naked &amp; subdomain S3 buckets
 
 ---
+
+# create-acm-certificate.yaml
+## Description:
+Create ACM Certificate and output its ARN.
+
+## Instruction:
+1. This stack can be used to request ACM SSL certificate in the two ways
+  * ACM w/ DNS validation - provide Route 53 "HostedZoneId"
+  * ACM w/ EMAIL validation - provide Email Domain Name (must be same as Domain Name in most cases)
+
+## Usage:
+### ACM w/ DNS validation
+* DomainName - example.com
+* ValidationMethod - DNS
+* HostedZoneId - <Route53_Hosted_Zone_Id>
+
+### Outcome
+1. Requests new ACM using DNS validation
+
+### ACM w/ EMAIL validation
+* DomainName - example.com
+* ValidationMethod - EMAIL
+* ValidationDomain - example.com
+
+### Outcome
+1. Requests new ACM using EMAIL validation
+
+## Outputs:
+1. Outputs.Arn
+
+---
+
 # s3-static-website-hosting-subdomain.yaml
 ## Description:
 Cloudformation template to manage aws services required for aws s3 static website hosting.
@@ -89,34 +121,3 @@ ACM certificate can be requested in two ways
 2. Add appropriate "Tags" while executing the stack. These tags will be automatically tagged to the services. Like
   * Environment - <Environment>
   * awsApplication - <My_Application_Arn>
-
----
-
-# create-acm-certificate.yaml
-## Description:
-Create ACM Certificate and output its ARN.
-
-## Instruction:
-1. This stack can be used to request ACM SSL certificate in the two ways
-  * ACM w/ DNS validation - provide Route 53 "HostedZoneId"
-  * ACM w/ EMAIL validation - provide Email Domain Name (must be same as Domain Name in most cases)
-
-## Usage:
-### ACM w/ DNS validation
-* DomainName - example.com
-* ValidationMethod - DNS
-* HostedZoneId - <Route53_Hosted_Zone_Id>
-
-### Outcome
-1. Requests new ACM using DNS validation
-
-### ACM w/ EMAIL validation
-* DomainName - example.com
-* ValidationMethod - EMAIL
-* ValidationDomain - example.com
-
-### Outcome
-1. Requests new ACM using EMAIL validation
-
-## Outputs:
-1. Outputs.Arn
