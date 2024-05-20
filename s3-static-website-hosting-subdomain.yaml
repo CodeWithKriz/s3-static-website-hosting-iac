@@ -177,7 +177,7 @@ Resources:
     Properties:
       OriginAccessControlConfig: 
         Description: !Sub 'Origin Access Control to customer "${DomainName}"'
-        Name: String
+        Name: !Sub '${DomainName}'
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
